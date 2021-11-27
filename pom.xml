@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.fathzer</groupId>
 	<artifactId>yapbam</artifactId>
-	<version>0.20.15</version>
+	<version>0.21.0</version>
 	<properties>
 		<project.build.sourceEncoding>ISO-8859-1</project.build.sourceEncoding>
 		<mainClass>net.yapbam.gui.Launcher</mainClass>
@@ -308,7 +308,7 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.13</version>
+			<version>4.13.2</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>

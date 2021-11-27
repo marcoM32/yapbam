@@ -1,6 +1,5 @@
 package net.yapbam.gui.dialogs.checkbook;
 
-import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Window;
@@ -8,13 +7,10 @@ import java.awt.event.ActionEvent;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
-import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableModel;
 
 import com.fathzer.jlocal.Formatter;
@@ -30,25 +26,19 @@ import net.yapbam.data.event.DataListener;
 import net.yapbam.gui.IconManager;
 import net.yapbam.gui.IconManager.Name;
 import net.yapbam.gui.LocalizationData;
-import net.yapbam.gui.administration.AbstractAlertPanel;
 import net.yapbam.gui.administration.AbstractListAdministrationPanel;
 
 @SuppressWarnings("serial")
-public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalData> implements AbstractAlertPanel {
-
+public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalData> {
 	private Account account;
-
-	private JButton alertButton;
-
-	public CheckbookListPanel(GlobalData data) {
+	private JButton alertSettings;
+	
+	public CheckbookListPanel (GlobalData data) {
 		super(data);
 		this.data.addListener(new DataListener() {
 			@Override
 			public void processEvent(DataEvent event) {
 				((AbstractTableModel)getJTable().getModel()).fireTableDataChanged(); //TODO We should test the event class and ignore some events (ie : ModeAddedEvent) 
-				
-				updateStateOfAlertButton();
-				
 				if (event instanceof CheckbookPropertyChangedEvent) { // Test if a checkbook is finished
 					CheckbookPropertyChangedEvent checkbookChangedEvt = (CheckbookPropertyChangedEvent)event;
 					Checkbook old = checkbookChangedEvt.getOldCheckbook();
@@ -70,19 +60,14 @@ public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalDa
 		this.account = null;
 		getJTable().setPreferredScrollableViewportSize(new Dimension(1, getJTable().getRowHeight() * 6));
 		getJTable().setRowSorter(new RowSorter<TableModel>(getJTable().getModel()));
-		getJTable().getColumnModel().getColumn(0).setCellRenderer(new AlertCellRender());
 	}
 		
 	public void setContent(Account account) {
 		this.account = account;
 		this.getNewButton().getAction().setEnabled(account!=null);
+		getRightComponent().setEnabled(account!=null);
 		((AbstractTableModel)getJTable().getModel()).fireTableDataChanged();
-		updateStateOfAlertButton();
-	}
-	
-	private void updateStateOfAlertButton() {
-		getAlertButton().setEnabled(account != null && account.getCheckbooksNumber() > 0);
-	}
+;	}
 
 	@Override
 	protected Action getDeleteButtonAction() {
@@ -97,6 +82,26 @@ public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalDa
 	@Override
 	protected Action getNewButtonAction() {
 		return new NewCheckbookAction();
+	}
+	
+	@Override
+	protected Component getRightComponent() {
+		if (alertSettings==null) {
+			final AbstractAction preferencesAction = new AbstractAction(LocalizationData.get("checkbookAlertsWidget.openPreferencesDialog")) {
+				@Override
+				public void actionPerformed(ActionEvent e) {
+					final Integer threshold = CheckbookAlertsPreferencesDialog.open(account.getCheckNumberAlertThreshold(), Utils.getOwnerWindow((Component) e.getSource()));
+					if (threshold!=null) {
+						data.setCheckNumberAlertThreshold(account, threshold);
+					}
+				}
+			};
+			preferencesAction.putValue(Action.SHORT_DESCRIPTION, LocalizationData.get("checkbookAlertsWidget.openPreferencesDialog.tooltip"));
+			alertSettings = new JButton(preferencesAction);
+			alertSettings.setIcon(IconManager.get(Name.SETTINGS));
+			alertSettings.setEnabled(false);
+		}
+		return alertSettings;
 	}
 
 	private final class NewCheckbookAction extends AbstractAction {
@@ -124,7 +129,7 @@ public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalDa
 			dialog.setVisible(true);
 			Checkbook checkbook = dialog.getResult();
 			if (checkbook!=null) {
-				((GlobalData)data).setCheckbook(account, old, checkbook);
+				data.setCheckbook(account, old, checkbook);
 			}
 		}
 	}
@@ -163,36 +168,9 @@ public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalDa
 		};
 	}
 
-	protected JButton getAlertButton() {
-		if (this.alertButton == null) {
-			final AbstractAction preferencesAction = new AbstractAction(LocalizationData.get("checkbookAlertsWidget.openPreferencesDialog")) {
-				@Override
-				public void actionPerformed(ActionEvent e) {
-					CheckbookAlertsPreferencesDialog.open(data, account,
-							Utils.getOwnerWindow((Component) e.getSource()));
-				}
-			};
-			preferencesAction.putValue(Action.SHORT_DESCRIPTION, LocalizationData.get("checkbookAlertsWidget.openPreferencesDialog.tooltip"));
-			this.alertButton = new JButton(preferencesAction);
-			this.alertButton.setIcon(IconManager.get(Name.SETTINGS));
-			this.alertButton.setEnabled(false);
-			this.alertButton.setPreferredSize(new Dimension(240, 30));
-		}
-		return this.alertButton;
-	}
-
 	@Override
 	protected Action getDuplicateButtonAction() {
 		return null;
-	}
-
-	@Override
-	protected Component getTopComponent() {
-		JPanel topPanel = new JPanel();
-		topPanel.setLayout(new BorderLayout());
-		topPanel.add(Box.createHorizontalGlue(), BorderLayout.CENTER);
-		topPanel.add(getAlertButton(), BorderLayout.EAST);
-		return topPanel;
 	}
 
 	private void createBook(Window owner, Account account) {
@@ -203,36 +181,4 @@ public class CheckbookListPanel extends AbstractListAdministrationPanel<GlobalDa
 			data.add(account, book);
 		}
 	}
-
-	@Override
-	public boolean hasAlert() {
-		boolean result = false;
-		if (account != null) {
-			for (int i = 0; i < account.getCheckbooksNumber() && !result; i++) {
-				if (account.getCheckbook(i).getRemaining() > 0 && //
-						account.getCheckbook(i).getRemaining() <= account.getCheckNumberAlertThreshold()) {
-					result = true;
-				}
-			}
-		}
-		return result;
-	}
-	
-	class AlertCellRender extends DefaultTableCellRenderer {
-		
-		@Override
-		public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus,
-				int row, int column) {
-			super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-			if (account.getCheckbook(row).getRemaining() > 0 && //
-					account.getCheckbook(row).getRemaining() <= account.getCheckNumberAlertThreshold()) {
-				this.setIcon(IconManager.get(Name.ALERT));
-			} else {
-				this.setIcon(null);
-			}
-			return this;
-		}
-
-	}
-
 }

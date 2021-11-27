@@ -1,41 +1,29 @@
 package net.yapbam.gui.administration;
 
-import java.awt.BorderLayout;
-import java.awt.event.ItemEvent;
-import java.awt.event.ItemListener;
-
-import javax.swing.Icon;
-import javax.swing.JCheckBox;
-import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import com.fathzer.jlocal.Formatter;
-
-import net.yapbam.data.Account;
 import net.yapbam.data.FilteredData;
-import net.yapbam.data.event.AccountAddedEvent;
-import net.yapbam.data.event.AccountPropertyChangedEvent;
-import net.yapbam.data.event.AccountRemovedEvent;
-import net.yapbam.data.event.CheckbookAddedEvent;
-import net.yapbam.data.event.CheckbookPropertyChangedEvent;
-import net.yapbam.data.event.CheckbookRemovedEvent;
-import net.yapbam.data.event.DataEvent;
-import net.yapbam.data.event.DataListener;
-import net.yapbam.data.event.EverythingChangedEvent;
-import net.yapbam.data.event.TransactionsAddedEvent;
-import net.yapbam.data.event.TransactionsRemovedEvent;
 import net.yapbam.gui.IconManager;
-import net.yapbam.gui.IconManager.Name;
 import net.yapbam.gui.LocalizationData;
 import net.yapbam.gui.YapbamState;
+import net.yapbam.gui.IconManager.Name;
+import net.yapbam.gui.administration.AccountAdministrationPanel.CheckBookAlertListener;
 import net.yapbam.gui.administration.filter.FilterListPanel;
-import net.yapbam.gui.widget.PanelWithOverlay;
 import net.yapbam.gui.widget.TabbedPane;
+import net.yapbam.util.HtmlUtils;
+import net.yapbam.gui.widget.PanelWithOverlay;
 
-public class AdministrationPanel extends JPanel implements AbstractAlertPanel {
+import javax.swing.JLayeredPane;
+import javax.swing.JCheckBox;
+import java.awt.BorderLayout;
+import java.awt.event.ItemListener;
+import java.awt.event.ItemEvent;
+
+public class AdministrationPanel extends JPanel {
 	private static final long serialVersionUID = 1L;
+	static final String ALERT_PROPERTY = "alert";
 
 	private FilteredData data;
 	private AbstractAdministrationPanel[] panels;
@@ -43,7 +31,7 @@ public class AdministrationPanel extends JPanel implements AbstractAlertPanel {
 	private TabbedPane tabbedPane;
 	private JLayeredPane layeredPane;
 	private JCheckBox ignoreFilter;
-	
+
 	private PeriodicalTransactionListPanel periodicalTransactionsPanel;
 	
 	/**
@@ -67,19 +55,6 @@ public class AdministrationPanel extends JPanel implements AbstractAlertPanel {
 				getIgnoreFilter().setVisible(getTabbedPane().getSelectedComponent() instanceof PeriodicalTransactionListPanel);
 			}
 		});
-		this.data.getGlobalData().addListener(new DataListener() {
-			@Override
-			public void processEvent(DataEvent event) {
-				if ((event instanceof EverythingChangedEvent) || (event instanceof AccountAddedEvent)
-						|| (event instanceof AccountRemovedEvent) || (event instanceof AccountPropertyChangedEvent)
-						|| (event instanceof TransactionsAddedEvent) || (event instanceof TransactionsRemovedEvent)
-						|| (event instanceof CheckbookAddedEvent) || (event instanceof CheckbookRemovedEvent)
-						|| (event instanceof CheckbookPropertyChangedEvent)) {
-					hasAlert();
-				}
-			}
-		});
-		hasAlert();
 	}
 	
 	TabbedPane getTabbedPane() {
@@ -95,11 +70,34 @@ public class AdministrationPanel extends JPanel implements AbstractAlertPanel {
 
 	private AbstractAdministrationPanel[] getPanels() {
 		if (panels == null) {
+			final AccountAdministrationPanel accountAdministrationPanel = new AccountAdministrationPanel(data.getGlobalData());
+			accountAdministrationPanel.addCheckBookAlert(new CheckBookAlertListener() {
+				@Override
+				public void process(boolean hasAlert) {
+					final String alert = hasAlert ? LocalizationData.get("AdministrationPlugIn.toolTip.checkbookAlert") : null;
+					final String basicToolTip =  accountAdministrationPanel.getPanelToolTip();
+					final int accountPanelIndex = getAccountPanelIndex();
+					String toolTipText = hasAlert ? HtmlUtils.linesToHtml(true, basicToolTip, alert) : basicToolTip;
+					tabbedPane.setToolTipTextAt(accountPanelIndex, toolTipText);
+					tabbedPane.setIconAt(accountPanelIndex, hasAlert ? IconManager.get(Name.ALERT) : null);
+					firePropertyChange(ALERT_PROPERTY, null, alert);
+				}
+			});
 			panels = new AbstractAdministrationPanel[] { getPeriodicalTransactionsPanel(),
-					new AccountAdministrationPanel(data.getGlobalData()), new CategoryListPanel(data.getGlobalData()),
+					accountAdministrationPanel,
+					new CategoryListPanel(data.getGlobalData()),
 					new FilterListPanel(data.getGlobalData()) };
 		}
 		return panels;
+	}
+	
+	private int getAccountPanelIndex() {
+		for (int i=0 ; i<getPanels().length; i++) {
+			if (getTabbedPane().getComponentAt(i) instanceof AccountAdministrationPanel) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	private PeriodicalTransactionListPanel getPeriodicalTransactionsPanel() {
@@ -141,34 +139,4 @@ public class AdministrationPanel extends JPanel implements AbstractAlertPanel {
 		}
 		return ignoreFilter;
 	}
-
-	@Override
-	public boolean hasAlert() {
-		boolean result = false;
-		if (this.data != null) {
-			for (int i = 0; i < this.data.getGlobalData().getAccountsNumber() && !result; i++) {
-				Account account = this.data.getGlobalData().getAccount(i);
-				if (account != null) {
-					for (int c = 0; c < account.getCheckbooksNumber() && !result; c++) {
-						if (account.getCheckbook(c).getRemaining() > 0 && //
-								account.getCheckbook(c).getRemaining() <= account.getCheckNumberAlertThreshold()) {
-							result = true;
-						}
-					}
-				}
-			}
-		}
-		Icon panelIcon = result ? IconManager.get(Name.ALERT) : null;
-		for (int i = 0; i < getPanels().length; i++) {
-			if (getPanels()[i] instanceof AccountAdministrationPanel) {
-				getTabbedPane().setIconAt(i, panelIcon);
-				getTabbedPane().setToolTipTextAt(i, result ? //
-						Formatter.format(LocalizationData.get("AccountManager.toolTip.checkbookAlert"), LocalizationData.get("AccountManager.toolTip")) : //
-						getPanels()[i].getPanelToolTip() //
-				);
-			}
-		}
-		return result;
-	}
-
 }
